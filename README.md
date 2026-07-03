@@ -46,5 +46,7 @@ That's it. You will automatically get a feature dialog displayed when the player
 ......\LocalLow\Ludeon Studios\RimWorld by Ludeon Studios\Config\ModFeatures\
 ```
 
+Whenever a dismissible feature dialog opens and that mod has no dismissed tutorial rows yet, ModFeatures opens the normal feature list first. After a short pause, it shows a small image-only hint over that dialog to point players at the row trash buttons. The hint keeps appearing until the player deletes at least one row. It is not shown for `showAll` dialogs because those have no row trash buttons.
+
 Enjoy
 /Brrainz

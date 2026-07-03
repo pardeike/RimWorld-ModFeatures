@@ -18,9 +18,50 @@ namespace Brrainz
 		const string modFeatureId = "brrainz.mod.features";
 		static Queue<Type> mods = new();
 		static bool showNextDialog = false;
+		static readonly List<PendingDismissHelp> pendingDismissHelpDialogs = [];
+
+		class PendingDismissHelp
+		{
+			internal Dialog_ModFeatures dialog;
+			internal float showAt;
+		}
+
+		static void ScheduleDismissHelp(Dialog_ModFeatures dialog)
+		{
+			pendingDismissHelpDialogs.Add(new PendingDismissHelp
+			{
+				dialog = dialog,
+				showAt = Time.realtimeSinceStartup + 1f
+			});
+		}
+
+		static void ShowPendingDismissHelp()
+		{
+			for (var i = pendingDismissHelpDialogs.Count - 1; i >= 0; i--)
+			{
+				var pending = pendingDismissHelpDialogs[i];
+				if (Time.realtimeSinceStartup < pending.showAt)
+					continue;
+
+				pendingDismissHelpDialogs.RemoveAt(i);
+				if (pending.dialog.IsClosed || pending.dialog.ShouldShowDismissHelp == false || Find.WindowStack.IsOpen<Dialog_ModFeatures>() == false)
+					continue;
+
+				Find.WindowStack.Add(new Dialog_ModFeaturesDismissHelp());
+			}
+		}
+
+		static void AddDialog(Dialog_ModFeatures dialog)
+		{
+			Find.WindowStack.Add(dialog);
+			if (dialog.TopicCount > 0 && dialog.ShouldShowDismissHelp)
+				ScheduleDismissHelp(dialog);
+		}
 
 		static void Root_Update_Postfix()
 		{
+			ShowPendingDismissHelp();
+
 			if (mods == null || showNextDialog == false)
 				return;
 			if (mods.Count == 0)
@@ -31,7 +72,7 @@ namespace Brrainz
 			var type = mods.Dequeue();
 			var dialog = new Dialog_ModFeatures(type, () => showNextDialog = true, false);
 			if (dialog.TopicCount > 0)
-				Find.WindowStack.Add(dialog);
+				AddDialog(dialog);
 			showNextDialog = false;
 		}
 
@@ -68,7 +109,7 @@ namespace Brrainz
 		{
 			var type = typeof(T);
 			var dialog = new Dialog_ModFeatures(type, null, showAll);
-			Find.WindowStack.Add(dialog);
+			AddDialog(dialog);
 		}
 	}
 
@@ -90,6 +131,7 @@ namespace Brrainz
 			[DataMember] string[] Dismissed { get; set; } = [];
 
 			internal bool IsDismissed(string topic) => Dismissed.Contains(topic);
+			internal bool ShouldShowDismissHelp => Dismissed.Length == 0;
 
 			internal void MarkDismissed(string topic, Action saveCallback)
 			{
@@ -213,7 +255,7 @@ namespace Brrainz
 			try
 			{
 				var serializer = new DataContractJsonSerializer(typeof(Configuration));
-				using var stream = new FileStream(configurationPath, FileMode.OpenOrCreate);
+				using var stream = new FileStream(configurationPath, FileMode.Create);
 				serializer.WriteObject(stream, configuration);
 			}
 			finally
@@ -223,6 +265,8 @@ namespace Brrainz
 
 		public override float Margin => margin;
 		internal int TopicCount => topicResources.Length;
+		internal bool IsClosed { get; private set; }
+		internal bool ShouldShowDismissHelp => showAll == false && configuration.ShouldShowDismissHelp;
 
 		public override void PreOpen()
 		{
@@ -245,6 +289,7 @@ namespace Brrainz
 
 		public override void PreClose()
 		{
+			IsClosed = true;
 			videoPlayer.Stop();
 			videoPlayer.targetTexture = null;
 			base.PreClose();
@@ -361,6 +406,73 @@ namespace Brrainz
 			}
 
 			Text.Font = font;
+		}
+	}
+
+	[StaticConstructorOnStartup]
+	internal class Dialog_ModFeaturesDismissHelp : Window
+	{
+		const float padding = 40f;
+		const float imageScale = 0.5f;
+		static Texture2D howToTexture;
+		Vector2 imageSize = new(722f, 147f);
+
+		static Texture2D HowToTexture
+		{
+			get
+			{
+				if (howToTexture != null)
+					return howToTexture;
+
+				var assembly = typeof(Dialog_ModFeaturesDismissHelp).Assembly;
+				using var stream = assembly.GetManifestResourceStream("Brrainz.HowTo.png");
+				if (stream == null)
+					throw new FileNotFoundException("Could not load embedded ModFeatures dismissal helper image.", "Brrainz.HowTo.png");
+
+				using var memoryStream = new MemoryStream();
+				stream.CopyTo(memoryStream);
+				howToTexture = new Texture2D(1, 1, TextureFormat.ARGB32, false)
+				{
+					name = "ModFeaturesDismissHelp"
+				};
+				howToTexture.LoadImage(memoryStream.ToArray());
+				return howToTexture;
+			}
+		}
+
+		internal Dialog_ModFeaturesDismissHelp()
+		{
+			doCloseX = true;
+			forcePause = true;
+			absorbInputAroundWindow = true;
+			silenceAmbientSound = true;
+			closeOnClickedOutside = false;
+		}
+
+		public override float Margin => padding;
+
+		public override Vector2 InitialSize
+		{
+			get
+			{
+				var texture = HowToTexture;
+				var maxWidth = Mathf.Max(1f, UI.screenWidth - padding * 4f);
+				var maxHeight = Mathf.Max(1f, UI.screenHeight - padding * 4f);
+				var scale = Mathf.Min(imageScale, maxWidth / texture.width, maxHeight / texture.height);
+				imageSize = new Vector2(texture.width * scale, texture.height * scale);
+				return imageSize + new Vector2(padding * 2f, padding * 2f);
+			}
+		}
+
+		public override void DoWindowContents(Rect inRect)
+		{
+			var imageRect = new Rect(
+				inRect.x + (inRect.width - imageSize.x) / 2f,
+				inRect.y + (inRect.height - imageSize.y) / 2f,
+				imageSize.x,
+				imageSize.y
+			);
+			GUI.DrawTexture(imageRect, HowToTexture, ScaleMode.ScaleToFit);
 		}
 	}
 }

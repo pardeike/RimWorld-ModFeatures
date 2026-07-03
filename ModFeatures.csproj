@@ -65,6 +65,11 @@
 	</ItemGroup>
 
 	<ItemGroup>
+		<None Remove="HowTo.png" />
+		<EmbeddedResource Include="HowTo.png" />
+	</ItemGroup>
+
+	<ItemGroup>
 		<None Update="Icon.png">
 			<Pack>True</Pack>
 			<PackagePath>\</PackagePath>
